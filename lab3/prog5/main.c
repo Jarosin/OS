@@ -4,7 +4,14 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 
+int flag = 0;
+
+void signal_handler(int signal) {
+    flag = 1;
+    printf("Catch: %d\n", signal);
+}
 
 int main(void)
 {
@@ -18,7 +25,12 @@ int main(void)
         perror("Can't pipe.\n");
         exit(1);
     }
-    char *const message[2] = {"aaa\n", "bbbbbb\n"};
+    char *const message[2] = {"aaa\n", "bbbbbbbbbbbbbbbb\n"};
+    if (signal(SIGINT, signal_handler) == -1)
+    {
+    	printf("Can't signal.\n");
+    	exit(1);
+    }
     for (size_t i = 0; i < 2; i++)
     {
         childpid[i] = fork();
@@ -29,13 +41,17 @@ int main(void)
         }
         else if (childpid[i] == 0)
         {
-            if (i == 0)
-            {
-                sleep(2);
-            }
+            sleep(2);
             close(fd[0]);
-            write(fd[1], message[i], strlen(message[i]));
-            printf("Message sent to parent!\n");
+            if (flag) {
+                if (i == 0) {
+                    sleep(2);
+                }
+                write(fd[1], message[i], strlen(message[i]));
+                printf("Message sent to parent!\n");
+            } else {
+                printf("No message was sent\n");
+            }
             exit(0);
         }
         else
@@ -71,8 +87,3 @@ int main(void)
     printf("Received messages: %s\n", buf);
     return 0;
 }
-
-
-/*
-Какая модель передачи информации в канале?
-Потоковая*/

@@ -2,12 +2,11 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#define N 2
 
 int main(void)
 {
-    pid_t childpid[N];
-    for (size_t i = 0; i < N; i++)
+    pid_t childpid[2];
+    for (size_t i = 0; i < 2; i++)
     {
         childpid[i] = fork();
 	    if (childpid[i] == -1)

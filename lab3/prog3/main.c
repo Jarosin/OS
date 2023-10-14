@@ -4,13 +4,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define N 2
-
 int main(void)
 {
-    const char *const param[N] = {"prog1", "prog2"};
-    pid_t childpid[N];
-    for (size_t i = 0; i < N; i++)
+    const char *const param[2] = {"prog1", "prog2"};
+    pid_t childpid[2];
+    for (size_t i = 0; i < 2; i++)
     {
         childpid[i] = fork();
 	    if (childpid[i] == -1)
@@ -35,7 +33,7 @@ int main(void)
 		}
     }
 
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < 2; i++) {
         if (childpid[i] == -1)
         {
             perror("Can't wait.\n");
