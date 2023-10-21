@@ -19,13 +19,12 @@ int main(void)
     int status;
     pid_t childpid[2];
     pid_t child_pid;
-    char buf[60];
+    char ch;
     if (pipe(fd) == -1)
     {
         perror("Can't pipe.\n");
         exit(1);
     }
-    char *const message[2] = {"aaa\n", "bbbbbbbbbbbbbbbb\n"};
     if (signal(SIGINT, signal_handler) == -1)
     {
     	printf("Can't signal.\n");
@@ -41,13 +40,19 @@ int main(void)
         }
         else if (childpid[i] == 0)
         {
+            const char *message;
+            if (i == 0) {
+                message = "aaaaaaa\n";
+            } else {
+                message = "bbbbbbbbbbbbbbb\n";
+            }
             sleep(2);
             close(fd[0]);
             if (flag) {
                 if (i == 0) {
-                    sleep(2);
+                    sleep(3);
                 }
-                write(fd[1], message[i], strlen(message[i]));
+                write(fd[1], message, sizeof(message));
                 printf("Message sent to parent!\n");
             } else {
                 printf("No message was sent\n");
@@ -71,19 +76,13 @@ int main(void)
         else if (WIFSTOPPED(status))
             printf("Child stopped, recieved signal %d\n", WSTOPSIG(status));
         close(fd[1]);
-        for (int i = 0; i < 60; i++)
-        {
-            buf[i] = '\0';
-        }
-        read(fd[0], buf, sizeof(buf));
-        printf("Received messages: %s\n", buf);
+        printf("Received messages: ");
+        while (read(fd[0], &ch, 1) > 0)
+            printf("%c", ch);
     }
     close(fd[1]);
-    for (int i = 0; i < 60; i++)
-    {
-        buf[i] = '\0';
-    }
-    read(fd[0], buf, sizeof(buf));
-    printf("Received messages: %s\n", buf);
+    printf("Received messages: ");
+    while (read(fd[0], &ch, 1) > 0)
+            printf("%c", ch);
     return 0;
 }
