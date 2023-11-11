@@ -32,7 +32,7 @@ int flag = 1;
 void sig_handler(int sig_num)
 {
     flag = 0;
-    printf("PID = %d, signal = %d\n", getpid(), sig_num);
+    printf("catch PID = %d, signal = %d\n", getpid(), sig_num);
 }
 
 void producer(const int semid)
@@ -160,13 +160,12 @@ int main()
     for (int i = 0; i < (NP + NC); i++)
     {
         child_pid = wait(&status);
-        printf("Child has finished: PID = %d\n", child_pid);
         if (WIFEXITED(status))
-            printf("Child exited with code %d\n", WEXITSTATUS(status));
+            printf("Child PID = %d exit with code %d\n", child_pid, WEXITSTATUS(status));
         else if (WIFSIGNALED(status))
-            printf("Child terminated, recieved signal %d\n", WTERMSIG(status));
+            printf("Child PID = %d terminate, recieved signal %d\n", child_pid, WTERMSIG(status));
         else if (WIFSTOPPED(status))
-            printf("Child stopped, recieved signal %d\n", WSTOPSIG(status));
+            printf("Child PID = %d\n stop, recieved signal %d\n", child_pid, WSTOPSIG(status));
     }
 
     if (shmdt(addr) == -1)
