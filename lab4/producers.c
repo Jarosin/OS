@@ -38,7 +38,7 @@ struct sembuf start_consume[2] = { {SF, P, 0}, {SB, P, 0} };
 struct sembuf stop_consume[2] =  { {SB, V, 0}, {SE, V, 0} };
 
 void signal_handler(int signal) {
-    flag = 1;
+    flag = 0;
     printf("Catch: %d\n", signal);
 }
 
