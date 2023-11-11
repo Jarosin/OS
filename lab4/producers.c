@@ -24,7 +24,7 @@ int semid;
 char *addr;
 char **ptr_prod;
 char **ptr_cons;
-char *conv; // Conveyor
+char *conv;
 char *ch;
 
 int flag = 1;
@@ -78,6 +78,7 @@ void consumer(const int semid)
     int exit_flag = 0;
     while (flag)
     {
+        sleep(rand() % 3);
         int p = semop(semid, start_consume, 2);
         if (p == -1)
         {
@@ -113,6 +114,7 @@ int main()
 {
     signal(SIGINT, sig_handler);
 
+    srand(rand() % 100);
     int memkey = 0;
     int status;
     pid_t child_pid;
