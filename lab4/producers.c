@@ -114,6 +114,8 @@ int main()
     signal(SIGINT, sig_handler);
 
     int memkey = 0;
+    int status;
+    pid_t child_pid;
     int fd = shmget(memkey, BUFSIZE, IPC_CREAT | PERMS);
     if (fd == -1)
     {
@@ -177,7 +179,16 @@ int main()
     }
 
     for (int i = 0; i < (NP + NC); i++)
-        wait(NULL);
+    {
+        child_pid = wait(&status);
+        printf("Child has finished: PID = %d\n", child_pid);
+        if (WIFEXITED(status))
+            printf("Child exited with code %d\n", WEXITSTATUS(status));
+        else if (WIFSIGNALED(status))
+            printf("Child terminated, recieved signal %d\n", WTERMSIG(status));
+        else if (WIFSTOPPED(status))
+            printf("Child stopped, recieved signal %d\n", WSTOPSIG(status));
+    }
 
     if (shmdt(addr) == -1)
     {
