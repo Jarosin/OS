@@ -48,8 +48,12 @@ void producer(const int semid)
         }
         **ptr_prod = *ch;
         printf("Producer %d >>> %c (%p)\n", getpid(), **ptr_prod, *ptr_prod);
+        if (*ch == 'z') {
+            *ch = 'a';
+        } else {
+            (*ch)++;
+        }
         (*ptr_prod)++;
-        (*ch)++;
         int v = semop(semid, stop_produce, 2);
         if (v == -1)
         {
