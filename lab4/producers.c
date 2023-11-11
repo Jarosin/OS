@@ -1,204 +1,187 @@
 #include <sys/sem.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <signal.h>
 
-#define SIZE_BUF 128
-#define PRODUCERS_AMOUNT 3
-#define CONSUMERS_AMOUNT 3
+#define BUFSIZE 128
 #define PERMS S_IRWXU | S_IRWXG | S_IRWXO
+#define NP 3
+#define NC 3
+#define SE 0
+#define SF 1
+#define SB 2
 
-int shmid, semid;
-char* addr3;
+struct sembuf start_produce[2] = {{SE, -1, 0}, {SB, -1, 0}};
+struct sembuf stop_produce[2] = {{SB, 1, 0}, {SF, 1, 0}};
+struct sembuf start_consume[2] = {{SF, -1, 0}, {SB, -1, 0}};
+struct sembuf stop_consume[2] = {{SB, 1, 0}, {SE, 1, 0}};
 
-char* addr;
-char* addr1;
-char* addr2;
+int semid;
+char *addr;
+char **ptr_prod;
+char **ptr_cons;
+char *conv; // Conveyor
+char *ch;
 
-char** ptr_prod;
-char** ptr_cons;
-char*  alfa;
-
-int flag;
-
-#define SB 0
-#define SE 1
-#define SF 2
-
-#define P -1
-#define V 1
-
-struct sembuf start_produce[2] = { {SE, P, 0}, {SB, P, 0} };
-struct sembuf stop_produce[2] =  { {SB, V, 0}, {SF, V, 0} };
-struct sembuf start_consume[2] = { {SF, P, 0}, {SB, P, 0} };
-struct sembuf stop_consume[2] =  { {SB, V, 0}, {SE, V, 0} };
-
-void signal_handler(int signal) {
+int flag = 1;
+void sig_handler(int sig_num)
+{
     flag = 0;
-    printf("Catch: %d\n", signal);
+    printf("PID = %d, signal = %d\n", getpid(), sig_num);
 }
 
 void producer(const int semid)
 {
-	while (flag)
-	{
-
-        int sem_op_p = semop(semid, start_produce, 2);
-        if (sem_op_p == -1)
+    int exit_flag = 0;
+    while (flag)
+    {
+        sleep(rand() % 3);
+        int p = semop(semid, start_produce, 2);
+        if (p == -1)
         {
-            perror("semop error\n");
+            perror("p semop error p\n");
             exit(1);
         }
-
-        **ptr_prod = *alfa;
-        printf("Producer [%d] >>>> [%c]\n", getpid(), **ptr_prod);
-
-        (*ptr_prod)++;
-        (*alfa)++;
-
-
-        sleep(rand() % 3);
-
-        int sem_op_v = semop(semid, stop_produce, 2);
-        if (sem_op_v == -1)
+        if (*ch > 'z')
         {
-            perror("semop error\n");
+            printf("Producer %d is about to exit\n", getpid());
+            exit_flag = 1;
+        }
+        else
+        {
+            **ptr_prod = *ch;
+            printf("Producer %d >>> %c (%p)\n", getpid(), **ptr_prod, *ptr_prod);
+            (*ptr_prod)++;
+            (*ch)++;
+        }
+        int v = semop(semid, stop_produce, 2);
+        if (v == -1)
+        {
+            perror("p semop error v\n");
             exit(1);
+        }
+        if (exit_flag)
+        {
+            printf("Producer %d has exited with code 0\n", getpid());
+            exit(0);
         }
     }
+    exit(0);
 }
 
 void consumer(const int semid)
 {
-	while (flag)
-	{
-        int sem_op_p = semop(semid, start_consume, 2);
-        if (sem_op_p == -1)
+    int exit_flag = 0;
+    while (flag)
+    {
+        int p = semop(semid, start_consume, 2);
+        if (p == -1)
         {
-            perror("semop error\n");
+            perror("c semop error p\n");
             exit(1);
         }
-
-        printf("Consumer [%d] <<<< [%c]\n", getpid(), **ptr_cons);
-
-        (**ptr_cons)++;
-
-        sleep(rand() % 3);
-
-        int sem_op_v = semop(semid, stop_consume, 2);
-        if (sem_op_v == -1)
+        printf("Consumer %d <<< %c (%p)\n", getpid(), **ptr_cons, *ptr_cons);
+        if (**ptr_cons == 'z')
         {
-            perror("semop error\n");
+            printf("Consumer %d is about to exit\n", getpid());
+            exit_flag = 1;
+        }
+        else
+        {
+            (*ptr_cons)++;
+        }
+        int v = semop(semid, stop_consume, 2);
+        if (v == -1)
+        {
+            perror("c semop error v\n");
             exit(1);
+        }
+        if (exit_flag)
+        {
+            printf("Consumer %d has exited with code 0\n", getpid());
+            exit(0);
         }
     }
-}
-
-void create_producers() {
-    int pid = -1;
-
-	for (int i = 0; i < PRODUCERS_AMOUNT; i++)
-    {
-        pid = fork();
-        if (pid == -1)
-        {
-            perror("can't fork\n");
-            exit(1);
-        }
-
-        if (pid == 0)
-        {
-            producer(semid);
-            return;
-        }
-	}
-}
-
-void create_consumers() {
-    int pid = -1;
-
-    for (int i = 0; i < CONSUMERS_AMOUNT; i++)
-    {
-        pid = fork();
-        if (pid == -1)
-        {
-            perror("can't fork\n");
-            exit(1);
-        }
-
-        if (pid == 0)
-        {
-            consumer(semid);
-            return;
-        }
-	}
+    exit(0);
 }
 
 int main()
 {
-    flag = 1;
-    key_t sem_key = ftok("key_file", 0);
-    key_t mem_key;
-    if (signal(SIGINT, signal_handler) == -1)
+    signal(SIGINT, sig_handler);
+
+    int memkey = 0;
+    int fd = shmget(memkey, BUFSIZE, IPC_CREAT | PERMS);
+    if (fd == -1)
     {
-    	printf("Can't signal.\n");
-    	exit(1);
+        perror("shmget\n");
+        exit(1);
     }
-	if ((shmid = shmget(mem_key, SIZE_BUF * sizeof(char), IPC_CREAT | PERMS)) == -1)
-	{
-		perror("shmget error\n");
-		exit(1);
-	}
 
-	addr = shmat(shmid, NULL, 0);
-	if (addr == (void*) -1)
-	{
-		perror("shmat error\n");
-		exit(1);
-	}
+    addr = (char *)shmat(fd, 0, 0);
+    if (addr == (char *)-1)
+    {
+        perror("shmat\n");
+        exit(1);
+    }
+    ptr_prod = (char **)addr;
+    ptr_cons = (char **)((char *)ptr_prod + sizeof(char *));
+    ch = (char *)ptr_cons + sizeof(char *);
+    *ch = 'a';
+    conv = ch + sizeof(char);
+    *ptr_prod = conv;
+    *ptr_cons = conv;
 
-    ptr_prod = addr;
-    ptr_cons = addr + sizeof(char*);
-    alfa = ptr_cons + sizeof(char*);
+    int semkey = ftok("key_file", 0);
+    if ((semid = semget(semkey, 3, IPC_CREAT | PERMS)) == -1)
+    {
+        perror("semget\n");
+        exit(1);
+    }
+    int cse = semctl(semid, SE, SETVAL, BUFSIZE);
+    int csf = semctl(semid, SF, SETVAL, 0);
+    int csb = semctl(semid, SB, SETVAL, 1);
+    if (cse == -1 || csf == -1 || csb == -1)
+    {
+        perror("semctl\n");
+        exit(1);
+    }
 
-	addr3 = alfa + sizeof(char);
+    pid_t pid = -1;
+    for (int i = 0; i < NP; i++)
+    {
+        if ((pid = fork()) == -1)
+        {
+            perror("p can't fork\n");
+            exit(1);
+        }
+        if (pid == 0)
+        {
+            producer(semid);
+        }
+    }
+    for (int i = 0; i < NC; i++)
+    {
+        if ((pid = fork()) == -1)
+        {
+            perror("c can't fork\n");
+            exit(1);
+        }
+        if (pid == 0)
+        {
+            consumer(semid);
+        }
+    }
 
-    *ptr_prod = addr3;
-    *ptr_cons = addr3;
+    for (int i = 0; i < (NP + NC); i++)
+        wait(NULL);
 
-	*addr = addr3;
-	*ptr_cons = addr3;
-    *alfa = 'a';
-
-	if ((semid = semget(sem_key, 3, IPC_CREAT | PERMS)) == -1)
-	{
-		perror("semget error\n");
-		exit(1);
-	}
-
-	int c_sb = semctl(semid, SB, SETVAL, 1);
-	int c_se = semctl(semid, SE, SETVAL, SIZE_BUF);
-	int c_sf = semctl(semid, SF, SETVAL, 0);
-
-	if (c_se == -1 || c_sf == -1 || c_sb == -1)
-	{
-		perror("semctl error\n");
-		exit(1);
-	}
-
-    create_producers();
-    create_consumers();
-
-	for (int i = 0; i < (CONSUMERS_AMOUNT + PRODUCERS_AMOUNT); i++)
-		wait(NULL);
-
-	if (shmdt(addr) == -1)
-	{
-		perror("shmdt error\n");
-		exit(1);
-	}
+    if (shmdt(addr) == -1)
+    {
+        perror("shmdt\n");
+        exit(1);
+    }
 }
