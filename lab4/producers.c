@@ -36,7 +36,6 @@ void sig_handler(int sig_num)
 
 void producer(const int semid)
 {
-    int exit_flag = 0;
     while (flag)
     {
         sleep(rand() % 3);
@@ -46,28 +45,15 @@ void producer(const int semid)
             perror("p semop error p\n");
             exit(1);
         }
-        if (*ch > 'z')
-        {
-            printf("Producer %d is about to exit\n", getpid());
-            exit_flag = 1;
-        }
-        else
-        {
-            **ptr_prod = *ch;
-            printf("Producer %d >>> %c (%p)\n", getpid(), **ptr_prod, *ptr_prod);
-            (*ptr_prod)++;
-            (*ch)++;
-        }
+        **ptr_prod = *ch;
+        printf("Producer %d >>> %c (%p)\n", getpid(), **ptr_prod, *ptr_prod);
+        (*ptr_prod)++;
+        (*ch)++;
         int v = semop(semid, stop_produce, 2);
         if (v == -1)
         {
             perror("p semop error v\n");
             exit(1);
-        }
-        if (exit_flag)
-        {
-            printf("Producer %d has exited with code 0\n", getpid());
-            exit(0);
         }
     }
     exit(0);
@@ -75,7 +61,6 @@ void producer(const int semid)
 
 void consumer(const int semid)
 {
-    int exit_flag = 0;
     while (flag)
     {
         sleep(rand() % 3);
@@ -86,25 +71,12 @@ void consumer(const int semid)
             exit(1);
         }
         printf("Consumer %d <<< %c (%p)\n", getpid(), **ptr_cons, *ptr_cons);
-        if (**ptr_cons == 'z')
-        {
-            printf("Consumer %d is about to exit\n", getpid());
-            exit_flag = 1;
-        }
-        else
-        {
-            (*ptr_cons)++;
-        }
+        (*ptr_cons)++;
         int v = semop(semid, stop_consume, 2);
         if (v == -1)
         {
             perror("c semop error v\n");
             exit(1);
-        }
-        if (exit_flag)
-        {
-            printf("Consumer %d has exited with code 0\n", getpid());
-            exit(0);
         }
     }
     exit(0);
