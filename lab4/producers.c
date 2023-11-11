@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 
 #define SIZE_BUF 128
 #define PRODUCERS_AMOUNT 3
@@ -22,6 +23,7 @@ char** ptr_prod;
 char** ptr_cons;
 char*  alfa;
 
+int flag;
 
 #define SB 0
 #define SE 1
@@ -35,9 +37,14 @@ struct sembuf stop_produce[2] =  { {SB, V, 0}, {SF, V, 0} };
 struct sembuf start_consume[2] = { {SF, P, 0}, {SB, P, 0} };
 struct sembuf stop_consume[2] =  { {SB, V, 0}, {SE, V, 0} };
 
+void signal_handler(int signal) {
+    flag = 1;
+    printf("Catch: %d\n", signal);
+}
+
 void producer(const int semid)
 {
-	while (1)
+	while (flag)
 	{
 
         int sem_op_p = semop(semid, start_produce, 2);
@@ -67,7 +74,7 @@ void producer(const int semid)
 
 void consumer(const int semid)
 {
-	while (1)
+	while (flag)
 	{
         int sem_op_p = semop(semid, start_consume, 2);
         if (sem_op_p == -1)
@@ -133,8 +140,14 @@ void create_consumers() {
 
 int main()
 {
+    flag = 1;
     key_t sem_key = ftok("key_file", 0);
     key_t mem_key;
+    if (signal(SIGINT, signal_handler) == -1)
+    {
+    	printf("Can't signal.\n");
+    	exit(1);
+    }
 	if ((shmid = shmget(mem_key, SIZE_BUF * sizeof(char), IPC_CREAT | PERMS)) == -1)
 	{
 		perror("shmget error\n");
