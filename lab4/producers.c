@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <time.h>
 
 #define BUFSIZE 128
 #define PERMS S_IRWXU | S_IRWXG | S_IRWXO
@@ -86,7 +87,7 @@ int main()
 {
     signal(SIGINT, sig_handler);
 
-    srand(rand() % 100);
+    srand(((int)time(NULL)));
     int memkey = 0;
     int status;
     pid_t child_pid;
