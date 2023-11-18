@@ -57,7 +57,7 @@ void reader(const int semid, const char *shm)
     printf("R[%5d] created.\n", getpid());
     while (flag)
     {
-        usleep((double)rand() / RAND_MAX * 1000000);
+        sleep(rand() % 3);
         if (semop(semid, sem_start_read, 4) == -1)
         {
             perror("start read error\n");
@@ -79,7 +79,7 @@ void writer(const int semid, char *shm)
     printf("W[%5d] created.\n", getpid());
     while (flag)
     {
-        usleep((double)rand() / RAND_MAX * 1000000);
+        sleep(rand() % 3);
         if (semop(semid, sem_start_write, 4) == -1)
         {
             perror("start write error\n");
@@ -99,9 +99,8 @@ void writer(const int semid, char *shm)
 int main()
 {
     signal(SIGINT, sig_handler);
-
+    srand(((int)time(NULL)));
     pid_t pids[NW + NR];
-
     int memkey = 0;
     int shmid = shmget(memkey, SHMSIZE, IPC_CREAT | PERMS);
     if (shmid == -1)
