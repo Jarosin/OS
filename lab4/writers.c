@@ -18,7 +18,6 @@
 #define C_ACTIVE_R 1
 #define C_WAITING_W 2
 #define B_ACTIVE_W 3
-#define B_BUF 4
 
 struct sembuf sem_start_read[4] = {
     {C_WAITING_R, 1, 0},
@@ -98,26 +97,27 @@ void writer(const int semid, char *shm)
 
 int main()
 {
-    signal(SIGINT, sig_handler);
+    pid_t pid;
     srand(((int)time(NULL)));
     pid_t pids[NW + NR];
     int memkey = 0;
+    if (signal(SIGINT, sig_handler) == SIG_ERR) {
+        perror("sig_err\n");
+        exit(1);
+    }
     int shmid = shmget(memkey, SHMSIZE, IPC_CREAT | PERMS);
     if (shmid == -1)
     {
         perror("shmget\n");
         exit(1);
     }
-
     char *shmaddr = (char *)shmat(shmid, NULL, 0);
     if (shmaddr == (char *)-1)
     {
         perror("shmat\n");
         exit(1);
     }
-
     memset(shmaddr, 0, SHMSIZE);
-
     int semkey = ftok("key_file", 0);
     if ((semid = semget(semkey, 5, IPC_CREAT | PERMS)) == -1)
     {
@@ -126,14 +126,11 @@ int main()
     }
 
     int cbsaw = semctl(semid, B_ACTIVE_W, SETVAL, 1);
-
     if (cbsaw == -1)
     {
         perror("semctl\n");
         exit(1);
     }
-
-    pid_t pid = -1;
     for (int i = 0; i < NW; i++)
     {
         pid = fork();
@@ -168,32 +165,28 @@ int main()
             pids[NW + i] = pid;
         }
     }
-
     int status;
-    pid_t child_pid;
+    pid_t w_pid;
     for (int i = 0; i < (NW + NR); i++)
     {
-        child_pid = wait(&status);
+        w_pid = wait(&status);
         if (WIFEXITED(status))
-            printf("Child PID = %d exit with code %d\n", child_pid, WEXITSTATUS(status));
+            printf("Child PID = %d exit with code %d\n", w_pid, WEXITSTATUS(status));
         else if (WIFSIGNALED(status))
-            printf("Child PID = %d terminate, recieved signal %d\n", child_pid, WTERMSIG(status));
+            printf("Child PID = %d terminate, recieved signal %d\n", w_pid, WTERMSIG(status));
         else if (WIFSTOPPED(status))
-            printf("Child PID = %d\n stop, recieved signal %d\n", child_pid, WSTOPSIG(status));
+            printf("Child PID = %d\n stop, recieved signal %d\n", w_pid, WSTOPSIG(status));
     }
-
     if (shmdt(shmaddr) == -1)
     {
         perror("shmdt\n");
         exit(1);
     }
-
     if (shmctl(shmid, IPC_RMID, (void *)shmaddr) < 0)
     {
         perror("rm shm error\n");
         exit(1);
     }
-
     if (semctl(semid, 0, IPC_RMID) < 0)
     {
         perror("rm sem error\n");
