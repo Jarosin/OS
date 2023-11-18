@@ -51,26 +51,6 @@ void sig_handler(int sig_num)
     printf("pid: %d, signal catch: %d\n", getpid(), sig_num);
 }
 
-int start_read(const int semid)
-{
-    return semop(semid, sem_start_read, 4);
-}
-
-int stop_read(const int semid)
-{
-    return semop(semid, sem_stop_read, 1);
-}
-
-int start_write(const int semid)
-{
-    return semop(semid, sem_start_write, 4);
-}
-
-int stop_write(const int semid)
-{
-    return semop(semid, sem_stop_write, 1);
-}
-
 void reader(const int semid, const char *shm)
 {
     srand(getpid());
@@ -78,13 +58,13 @@ void reader(const int semid, const char *shm)
     while (flag)
     {
         usleep((double)rand() / RAND_MAX * 1000000);
-        if (start_read(semid) == -1)
+        if (semop(semid, sem_start_read, 4) == -1)
         {
             perror("start read error\n");
             exit(1);
         }
 		printf("R[%5d]: %3d\n", getpid(), *((int*)shm));
-        if (stop_read(semid) == -1)
+        if (semop(semid, sem_stop_read, 1) == -1)
         {
             perror("stop read error\n");
             exit(1);
@@ -100,14 +80,14 @@ void writer(const int semid, char *shm)
     while (flag)
     {
         usleep((double)rand() / RAND_MAX * 1000000);
-        if (start_write(semid) == -1)
+        if (semop(semid, sem_start_write, 4) == -1)
         {
             perror("start write error\n");
             exit(1);
         }
         ++(*(int*)shm);
 		printf("W[%5d]: %3d\n", getpid(), *((int*)shm));
-        if (stop_write(semid) == -1)
+        if (semop(semid, sem_stop_write, 1) == -1)
         {
             perror("stop write error\n");
             exit(1);
