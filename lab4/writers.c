@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <signal.h>
+#include <string.h>
 
 #define SHMSIZE sizeof(int)
 #define PERMS (S_IRWXU | S_IRWXG | S_IRWXO)
@@ -17,6 +18,7 @@
 #define C_ACTIVE_R 1
 #define C_WAITING_W 2
 #define B_ACTIVE_W 3
+#define B_BUF 4
 
 struct sembuf sem_start_read[4] = {
     {C_WAITING_R, 1, 0},
@@ -81,7 +83,7 @@ void reader(const int semid, const char *shm)
             perror("start read error\n");
             exit(1);
         }
-        printf("R[%5d]: %3d\n", getpid(), *((int *)shm));
+		printf("R[%5d]: %3d\n", getpid(), *((int*)shm));
         if (stop_read(semid) == -1)
         {
             perror("stop read error\n");
@@ -103,8 +105,8 @@ void writer(const int semid, char *shm)
             perror("start write error\n");
             exit(1);
         }
-        ++(*(int *)shm);
-        printf("W[%5d]: %3d\n", getpid(), *((int *)shm));
+        ++(*(int*)shm);
+		printf("W[%5d]: %3d\n", getpid(), *((int*)shm));
         if (stop_write(semid) == -1)
         {
             perror("stop write error\n");
@@ -137,8 +139,8 @@ int main()
 
     memset(shmaddr, 0, SHMSIZE);
 
-    int semkey = ftok("keyfile", 0);
-    if ((semid = semget(semkey, 4, IPC_CREAT | PERMS)) == -1)
+    int semkey = ftok("key_file", 0);
+    if ((semid = semget(semkey, 5, IPC_CREAT | PERMS)) == -1)
     {
         perror("semget\n");
         exit(1);
