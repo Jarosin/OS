@@ -1,22 +1,20 @@
-#include <errno.h>
+#include <syslog.h>
 #include <fcntl.h>
-#include <pthread.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
-#include <sys/syslog.h>
-#include <time.h>
-#include <syslog.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/file.h>
+#include <time.h>
+#include <pthread.h>
 
 #define LOCKFILE "/var/run/daemon.pid"
-
-#define TIMEOUT 10
-
-sigset_t mask;
+#define LOCKMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)
 
 int lockfile(int fd)
 {
@@ -30,38 +28,6 @@ int lockfile(int fd)
     return fcntl(fd, F_SETLK, &fl);
 }
 
-int already_running(void)
-{
-    int fd;
-    char buf[16];
-    int perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
-
-    fd = open(LOCKFILE, O_RDWR | O_CREAT, perms);
-    if (fd < 0)
-    {
-        syslog(LOG_ERR, "невозможно открыть %s: %s", LOCKFILE, strerror(errno));
-        exit(1);
-    }
-
-    if (lockfile(fd) < 0)
-    {
-        if (errno == EACCES || errno == EAGAIN)
-        {
-            close(fd);
-            return 1;
-        }
-        syslog(LOG_ERR, "невозможно установить блокировку на %s: %s", LOCKFILE, strerror(errno));
-        exit(1);
-    }
-
-    ftruncate(fd, 0);
-    sprintf(buf, "%ld", (long)getpid());
-    write(fd, buf, strlen(buf) + 1);
-
-    return 0;
-}
-
-
 void daemonize(const char *cmd)
 {
     int i, fd0, fd1, fd2;
@@ -73,36 +39,34 @@ void daemonize(const char *cmd)
 
     if (getrlimit(RLIMIT_NOFILE, &rl) < 0)
     {
-        printf("%s: невозможно получить максимальный номер дескриптора ", cmd);
+        fprintf(stderr, "%s: невозможно получить максимальный номер дескриптора", cmd);
+        exit(1);
     }
 
     if ((pid = fork()) < 0)
     {
-        printf("%s: ошибка вызова функции fork", cmd);
+        fprintf(stderr, "%s: ошибка вызова функции fork", cmd);
+        exit(1);
     }
-    else if (pid > 0)
+    else if (pid != 0)
     {
         exit(0);
     }
 
+    setsid();
     sa.sa_handler = SIG_IGN;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
-
     if (sigaction(SIGHUP, &sa, NULL) < 0)
     {
-        printf("%s: невозможно игнорировать сигнал SIGHUP", cmd);
-    }
-
-    if(setsid() == -1)
-    {
-    	printf("Can't call setsid()\n");
-    	exit(1);
+        fprintf(stderr, "Невозможно игнорировать сигнал SIGHUP");
+        exit(1);
     }
 
     if (chdir("/") < 0)
     {
-        printf("%s: невозможно сделать текущим рабочим каталогом", cmd);
+        fprintf(stderr, "Невозможно сделать текущим рабочим каталогом /");
+        exit(1);
     }
 
     if (rl.rlim_max == RLIM_INFINITY)
@@ -119,44 +83,87 @@ void daemonize(const char *cmd)
     fd2 = dup(0);
 
     openlog(cmd, LOG_CONS, LOG_DAEMON);
-
     if (fd0 != 0 || fd1 != 1 || fd2 != 2)
     {
-        syslog(LOG_ERR, "ошибочные файловые дескрипторы %d %d %d", fd0, fd1, fd2);
+        syslog(LOG_ERR, "Ошибочные файловые дескрипторы %d %d %d", fd0, fd1, fd2);
         exit(1);
     }
 }
 
-void reread(void)
-{}
+int already_running()
+{
+    int fd;
+    char buf[16];
+
+    fd = open(LOCKFILE, O_RDWR|O_CREAT, LOCKMODE);
+    if (fd < 0)
+    {
+        syslog(LOG_ERR, "Невозможно открыть %s: %s", LOCKFILE, strerror(errno));
+        exit(1);
+    }
+    if (lockfile(fd) < 0)
+    {
+        if (errno == EACCES || errno == EAGAIN)
+        {
+            close(fd);
+            return 1;
+        }
+        syslog(LOG_ERR, "Невозможно установить блокировку на %s: %s", LOCKFILE, strerror(errno));
+        exit(1);
+    }
+    ftruncate(fd, 0);
+    sprintf(buf, "%ld", (long)getpid());
+    write(fd, buf, strlen(buf) + 1);
+
+    return 0;
+}
+
+sigset_t mask;
+
 
 void *thr_fn(void *arg)
 {
     int err, signo;
-
     for (;;)
     {
         err = sigwait(&mask, &signo);
         if (err != 0)
         {
-            syslog(LOG_ERR, "ошибка вызова функции sigwait");
+            syslog(LOG_ERR, "Ошибка вызова функции sigwait");
             exit(1);
         }
-
         switch (signo)
         {
-        case SIGHUP:
-            syslog(LOG_INFO, "чтение конфигурационного файла");
-            reread();
-            break;
-        case SIGTERM:
-            syslog(LOG_INFO, "получен SIGTERM; выход");
-            exit(0);
-        default:
-            syslog(LOG_INFO, "получен сигнал %d\n", signo);
+            case SIGHUP:
+                syslog(LOG_INFO, "Чтение конфигурационного файла");
+                break;
+            case SIGTERM:
+                syslog(LOG_INFO, "Получен сигнал SIGTERM; выход");
+                exit(0);
+            default:
+                syslog(LOG_INFO, "Получен непредвиденный сигнал %d\n", signo);
         }
     }
+    return 0;
+}
 
+void *thr_fn_aaa(void *arg)
+{
+    for (;;)
+    {
+        syslog(LOG_INFO, "aaa");
+        sleep(1);
+    }
+    return 0;
+}
+
+void *thr_fn_bbb(void *arg)
+{
+    for (;;)
+    {
+        syslog(LOG_INFO, "bbb");
+        sleep(1);
+    }
     return 0;
 }
 
@@ -168,19 +175,17 @@ int main(int argc, char *argv[])
     struct sigaction sa;
 
     if ((cmd = strrchr(argv[0], '/')) == NULL)
-    {
         cmd = argv[0];
-    }
     else
-    {
         cmd++;
-    }
+
+    printf("Логин до daemonize: %s\n", getlogin());
 
     daemonize(cmd);
 
     if (already_running())
     {
-        syslog(LOG_ERR, "демон уже запущен");
+        syslog(LOG_ERR, "Демон уже запущен");
         exit(1);
     }
 
@@ -189,29 +194,47 @@ int main(int argc, char *argv[])
     sa.sa_flags = 0;
     if (sigaction(SIGHUP, &sa, NULL) < 0)
     {
-        syslog(LOG_SYSLOG, "невозможно восставновить действие SIG_DFL для SIGHUP");
+        fprintf(stderr, "Невозможно восстановить действие SIG_DFL для SIGHUP");
+        exit(1);
     }
-
     sigfillset(&mask);
     if ((err = pthread_sigmask(SIG_BLOCK, &mask, NULL)) != 0)
     {
-        printf("ошибка выполнения операции SIG_BLOCK");
+        fprintf(stderr, "Ошибка выполнения операции SIG_BLOCK");
+        exit(1);
     }
-
-    pthread_create(&tid, NULL, thr_fn, NULL);
-    if (tid == -1)
+    err = pthread_create(&tid, NULL, thr_fn, 0);
+    if (err != 0)
     {
-        syslog(LOG_ERR, "невозможно создать поток");
+        fprintf(stderr, "Невозможно создать поток");
+        exit(1);
     }
 
-    time_t raw_time;
-    struct tm *timeinfo;
+    syslog(LOG_INFO, "Логин после daemonize: %s\n", getlogin());
+
+    pthread_t tid_aaa;
+    err = pthread_create(&tid_aaa, NULL, thr_fn_aaa, 0);
+    if (err != 0)
+    {
+        fprintf(stderr, "Невозможно создать поток AAA");
+        exit(1);
+    }
+
+    pthread_t tid_bbb;
+    err = pthread_create(&tid_bbb, NULL, thr_fn_bbb, 0);
+    if (err != 0)
+    {
+        fprintf(stderr, "Невозможно создать поток BBB");
+        exit(1);
+    }
 
     for (;;)
     {
-        sleep(TIMEOUT);
-        time(&raw_time);
-        timeinfo = localtime(&raw_time);
-        syslog(LOG_INFO, "Current time is: %s", asctime(timeinfo));
+        time_t t = time(NULL);
+        struct tm tm = *localtime(&t);
+        syslog(LOG_INFO, "%s: Текущее время: %02d:%02d:%02d\n", cmd, tm.tm_hour, tm.tm_min, tm.tm_sec);
+        sleep(1);
     }
+
+    return 0;
 }
